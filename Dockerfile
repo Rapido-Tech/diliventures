@@ -1,38 +1,56 @@
-# Stage 1: Build
-FROM node:20-alpine AS builder
-
-# Set working directory
+# ─────────────────────────────────────────────────────
+# Stage 1: Install dependencies
+# ─────────────────────────────────────────────────────
+FROM node:20-alpine AS deps
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# libc6-compat is required for some native modules on Alpine
+RUN apk add --no-cache libc6-compat
 
-# Install dependencies
-RUN npm install
+COPY package.json ./
+RUN npm install --legacy-peer-deps
 
-# Copy all app files
+# ─────────────────────────────────────────────────────
+# Stage 2: Build the application
+# ─────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build the Next.js app
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
 RUN npm run build
 
-# Stage 2: Production
+# ─────────────────────────────────────────────────────
+# Stage 3: Production runner (minimal image)
+# ─────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
-
-# Set working directory
 WORKDIR /app
 
-# Install only production dependencies
-COPY package.json package-lock.json* ./
-RUN npm install --production
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy built Next.js app from builder
-COPY --from=builder /app/.next ./.next
+# Non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 nextjs
+
+# Copy only what the standalone server needs
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.js ./next.config.js
+RUN mkdir -p .next && chown nextjs:nodejs .next
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Expose the port Next.js runs on
-EXPOSE 3005
+USER nextjs
 
-# Start the app
-CMD ["npm", "start"]
+EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
+
+CMD ["node", "server.js"]
