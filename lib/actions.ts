@@ -8,7 +8,7 @@ export async function registerUser(formData: any) {
   const { name, email, password } = formData;
 
   try {
-    const client = await clientPromise;
+    const client = await clientPromise();
     const db = client.db(); // Uses DB from your MONGODB_URI
 
     // 1. Check if user already exists

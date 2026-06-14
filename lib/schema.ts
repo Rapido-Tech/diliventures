@@ -109,7 +109,7 @@ export type TransferDTO = Omit<
 const DB_NAME = process.env.MONGODB_DB;
 
 export async function getDb() {
-  const client = await clientPromise;
+  const client = await clientPromise();
   return client.db(DB_NAME);
 }
 

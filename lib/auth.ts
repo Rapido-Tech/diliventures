@@ -18,7 +18,7 @@ import bcrypt from "bcryptjs";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   trustHost: true,
-  adapter: MongoDBAdapter(clientPromise),
+  adapter: MongoDBAdapter(clientPromise()),
   session: { strategy: "jwt" },
   providers: [
     ...authConfig.providers,
@@ -26,7 +26,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const client = await clientPromise;
+        const client = await clientPromise();
         const db = client.db();
 
         // Look for user in MongoDB
