@@ -171,7 +171,6 @@ export default function AppInterface(): React.ReactElement {
         </div>
       </nav>
 
-      {/* Sub-Header */}
       <header className="bg-white border-b border-slate-200">
         <div className="mx-auto px-6 py-6">
           <div className="flex flex-col gap-4">
@@ -182,11 +181,13 @@ export default function AppInterface(): React.ReactElement {
             </div>
             <Separator className="mb-2" />
             <div className="bg-linear-to-br from-blue-700 to-blue-900 rounded-xs p-6 text-white shadow-lg">
-              <h1 className="text-2xl font-bold">Devices Management Dashboard</h1>
+              <h1 className="text-2xl font-bold">
+                Devices Management Dashboard
+              </h1>
               <p className="text-xs text-blue-100 leading-relaxed md:w-1/2 mt-2">
-                A secure digital ledger for registering and linking IMEI numbers and serial numbers
-                to verified owners. Transfer ownership, check blacklist status, and generate instant
-                device reports.
+                A secure digital ledger for registering and linking IMEI numbers
+                and serial numbers to verified owners. Transfer ownership, check
+                blacklist status, and generate instant device reports.
               </p>
             </div>
           </div>
@@ -198,7 +199,9 @@ export default function AppInterface(): React.ReactElement {
         {error && (
           <div className="p-4 mb-6 rounded-lg bg-red-50 border border-red-200 flex items-center justify-between">
             <p className="text-sm text-red-600 font-medium">⚠ {error}</p>
-            <Button onClick={fetchDevices} variant="outline" size="sm">Retry</Button>
+            <Button onClick={fetchDevices} variant="outline" size="sm">
+              Retry
+            </Button>
           </div>
         )}
 
@@ -233,10 +236,18 @@ export default function AppInterface(): React.ReactElement {
                     {isGlobalLoading ? (
                       Array.from({ length: 5 }).map((_, i) => (
                         <tr key={i}>
-                          <td className="px-6 py-4"><Skeleton className="h-4 w-32 rounded-sm" /></td>
-                          <td className="px-6 py-4"><Skeleton className="h-4 w-24 rounded-sm" /></td>
-                          <td className="px-6 py-4"><Skeleton className="h-4 w-24 rounded-full" /></td>
-                          <td className="px-6 py-4"><Skeleton className="h-8 w-8 rounded-sm" /></td>
+                          <td className="px-6 py-4">
+                            <Skeleton className="h-4 w-32 rounded-sm" />
+                          </td>
+                          <td className="px-6 py-4">
+                            <Skeleton className="h-4 w-24 rounded-sm" />
+                          </td>
+                          <td className="px-6 py-4">
+                            <Skeleton className="h-4 w-24 rounded-full" />
+                          </td>
+                          <td className="px-6 py-4">
+                            <Skeleton className="h-8 w-8 rounded-sm" />
+                          </td>
                         </tr>
                       ))
                     ) : devices.length === 0 ? (
@@ -271,14 +282,16 @@ export default function AppInterface(): React.ReactElement {
               </div>
               <h3 className="text-sm font-bold mb-2">Pro Tip: Secure Resale</h3>
               <p className="text-xs text-blue-100 leading-relaxed">
-                Always initiate a "Digital Transfer" before handing over your device to ensure
-                clean ownership transfer.
+                Always initiate a "Digital Transfer" before handing over your
+                device to ensure clean ownership transfer.
               </p>
             </div>
 
             {/* Quick Transfer */}
             <div className="bg-white border border-slate-200 rounded-xs p-6">
-              <h3 className="text-sm font-bold text-slate-800 mb-4">Quick Transfer</h3>
+              <h3 className="text-sm font-bold text-slate-800 mb-4">
+                Quick Transfer
+              </h3>
               {devices.length > 0 ? (
                 <div className="space-y-2">
                   {devices.slice(0, 3).map((d) => (
@@ -287,9 +300,14 @@ export default function AppInterface(): React.ReactElement {
                       onClick={() => setTransferDevice(d)}
                       className="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50/50 transition-all text-left group"
                     >
-                      <ArrowRightLeft size={14} className="text-slate-400 group-hover:text-blue-500 shrink-0" />
+                      <ArrowRightLeft
+                        size={14}
+                        className="text-slate-400 group-hover:text-blue-500 shrink-0"
+                      />
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-700 truncate">{d.brand} {d.model}</p>
+                        <p className="text-xs font-bold text-slate-700 truncate">
+                          {d.brand} {d.model}
+                        </p>
                         <p className="text-[10px] text-slate-400 font-mono truncate">
                           {d.imei ?? d.serialNumber}
                         </p>
@@ -309,9 +327,12 @@ export default function AppInterface(): React.ReactElement {
 
             {/* Search Device */}
             <div className="bg-white border border-slate-200 rounded-xs p-6">
-              <h3 className="text-sm font-bold text-slate-800 mb-3">Verify Any Device</h3>
+              <h3 className="text-sm font-bold text-slate-800 mb-3">
+                Verify Any Device
+              </h3>
               <p className="text-xs text-slate-500 mb-4">
-                Check the status and ownership history of any device by IMEI or serial number.
+                Check the status and ownership history of any device by IMEI or
+                serial number.
               </p>
               <Link
                 href="/search"
@@ -328,7 +349,10 @@ export default function AppInterface(): React.ReactElement {
       {showModal && (
         <AddDeviceModal
           onClose={() => setShowModal(false)}
-          onSuccess={() => { setShowModal(false); fetchDevices(); }}
+          onSuccess={() => {
+            setShowModal(false);
+            fetchDevices();
+          }}
         />
       )}
 
@@ -336,7 +360,10 @@ export default function AppInterface(): React.ReactElement {
         <TransferModal
           device={transferDevice}
           onClose={() => setTransferDevice(null)}
-          onSuccess={() => { setTransferDevice(null); fetchDevices(); }}
+          onSuccess={() => {
+            setTransferDevice(null);
+            fetchDevices();
+          }}
         />
       )}
     </div>
@@ -378,7 +405,9 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         />
       </div>
       <p className="text-xs text-slate-500">No devices registered yet.</p>
-      <Button onClick={onAdd} size="sm">Add Your First Device</Button>
+      <Button onClick={onAdd} size="sm">
+        Add Your First Device
+      </Button>
     </div>
   );
 }
