@@ -171,6 +171,7 @@ export default function AppInterface(): React.ReactElement {
         </div>
       </nav>
 
+      {/* Sub-Header */}
       <header className="bg-white border-b border-slate-200">
         <div className="mx-auto px-6 py-6">
           <div className="flex flex-col gap-4">
