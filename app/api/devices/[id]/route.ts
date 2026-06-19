@@ -10,15 +10,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import {
   getDevicesCollection,
+  getFlagHistoryCollection,
+  toDeviceDTO,
   type DeviceDocument,
-  type DeviceDTO,
+  type DeviceCondition,
+  type OwnershipType,
 } from "@/lib/schema";
 import { auth } from "@/lib/auth";
 
-function toDTO(doc: DeviceDocument): DeviceDTO {
-  const { _id, userId, ...rest } = doc;
-  return { ...rest, _id: _id.toString(), userId: userId.toString() };
-}
+const VALID_CONDITIONS: DeviceCondition[] = ["New", "Used", "Refurbished"];
+const VALID_OWNERSHIP_TYPES: OwnershipType[] = ["Individual", "Company"];
 
 function err(msg: string, status: number) {
   return NextResponse.json({ success: false, error: msg }, { status });
@@ -43,7 +44,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!doc) return err("Device not found", 404);
   if (doc.userId.toString() !== session.user.id) return err("Forbidden", 403);
 
-  return NextResponse.json({ success: true, data: toDTO(doc) });
+  return NextResponse.json({ success: true, data: toDeviceDTO(doc) });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -63,8 +64,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!doc) return err("Device not found", 404);
   if (doc.userId.toString() !== session.user.id) return err("Forbidden", 403);
 
-  const body = (await req.json()) as Partial<DeviceDocument> & { flagReason?: string };
+  const body = (await req.json()) as Partial<DeviceDocument> & {
+    flagReason?: string;
+    incidentLocation?: string;
+    incidentAt?: string;
+    policeObNumber?: string;
+  };
   const update: Partial<DeviceDocument> = { updatedAt: new Date() };
+  const unset: Partial<Record<keyof DeviceDocument, "">> = {};
 
   // Standard editable fields
   const EDITABLE_FIELDS: Array<keyof DeviceDocument> = ["brand", "model", "images"];
@@ -75,7 +82,41 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Status update: owner can flag their own device as Stolen/Lost/Fraud/Other
+  // Ownership type / company name / condition
+  if ("condition" in body) {
+    if (!VALID_CONDITIONS.includes(body.condition as DeviceCondition)) {
+      return err(`condition must be one of: ${VALID_CONDITIONS.join(", ")}`, 400);
+    }
+    update.condition = body.condition as DeviceCondition;
+  }
+
+  if ("ownershipType" in body) {
+    if (!VALID_OWNERSHIP_TYPES.includes(body.ownershipType as OwnershipType)) {
+      return err(
+        `ownershipType must be one of: ${VALID_OWNERSHIP_TYPES.join(", ")}`,
+        400,
+      );
+    }
+    update.ownershipType = body.ownershipType as OwnershipType;
+
+    if (body.ownershipType === "Company") {
+      const companyName = (body as { companyName?: string }).companyName;
+      if (!companyName || !companyName.trim()) {
+        return err("companyName is required when ownershipType is Company", 400);
+      }
+      update.companyName = companyName.trim();
+    } else {
+      unset.companyName = "";
+    }
+  } else if ("companyName" in body) {
+    const companyName = (body as { companyName?: string }).companyName;
+    update.companyName = companyName ? companyName.trim() : undefined;
+  }
+
+  // Status update: owner can flag/unflag their own device, with a structured report
+  let historyAction: "Flagged" | "Unflagged" | null = null;
+  let historyReason = "";
+
   if ("status" in body) {
     const validStatuses = ["Clean", "Flagged"] as const;
     if (!validStatuses.includes(body.status as never)) {
@@ -87,23 +128,75 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (!body.flagReason || !(body.flagReason as string).trim()) {
         return err("A reason is required when flagging a device", 400);
       }
-      update.flagReason = (body.flagReason as string).trim();
+      historyReason = (body.flagReason as string).trim();
+      update.flagReason = historyReason;
+      update.flaggedAt = new Date();
+
+      if (body.incidentLocation && body.incidentLocation.trim()) {
+        update.incidentLocation = body.incidentLocation.trim();
+      } else {
+        unset.incidentLocation = "";
+      }
+
+      if (body.incidentAt) {
+        const incidentDate = new Date(body.incidentAt);
+        if (isNaN(incidentDate.getTime())) {
+          return err("Invalid incidentAt date", 400);
+        }
+        update.incidentAt = incidentDate;
+      } else {
+        unset.incidentAt = "";
+      }
+
+      if (body.policeObNumber && body.policeObNumber.trim()) {
+        update.policeObNumber = body.policeObNumber.trim();
+      } else {
+        unset.policeObNumber = "";
+      }
+
+      historyAction = "Flagged";
     } else {
       // Clearing flag — store the unflag note in flagReason if provided
-      update.flagReason = body.flagReason
-        ? (body.flagReason as string).trim()
-        : undefined;
+      historyReason = body.flagReason ? (body.flagReason as string).trim() : "";
+      update.flagReason = historyReason || undefined;
+      unset.flaggedAt = "";
+      unset.incidentLocation = "";
+      unset.incidentAt = "";
+      unset.policeObNumber = "";
+
+      historyAction = "Unflagged";
     }
   }
 
   const result = await col.findOneAndUpdate(
     { _id: new ObjectId(id) },
-    { $set: update },
+    {
+      $set: update,
+      ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
+    },
     { returnDocument: "after" },
   );
 
   if (!result) return err("Update failed", 500);
-  return NextResponse.json({ success: true, data: toDTO(result) });
+
+  if (historyAction) {
+    const historyCol = await getFlagHistoryCollection();
+    await historyCol.insertOne({
+      _id: new ObjectId(),
+      deviceId: result._id,
+      ...(result.imei ? { imei: result.imei } : {}),
+      ...(result.serialNumber ? { serialNumber: result.serialNumber } : {}),
+      action: historyAction,
+      reason: historyReason,
+      ...(result.incidentLocation ? { incidentLocation: result.incidentLocation } : {}),
+      ...(result.incidentAt ? { incidentAt: result.incidentAt } : {}),
+      ...(result.policeObNumber ? { policeObNumber: result.policeObNumber } : {}),
+      changedBy: new ObjectId(session.user.id),
+      changedAt: new Date(),
+    });
+  }
+
+  return NextResponse.json({ success: true, data: toDeviceDTO(result) });
 }
 
 // ─────────────────────────────────────────────────────────────

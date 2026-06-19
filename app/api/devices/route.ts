@@ -11,9 +11,11 @@ import { ObjectId } from "mongodb";
 import {
   getDevicesCollection,
   getBlacklistCollection,
+  toDeviceDTO,
   type DeviceDocument,
-  type DeviceDTO,
   type DeviceType,
+  type DeviceCondition,
+  type OwnershipType,
 } from "@/lib/schema";
 import { validateImei } from "@/lib/imei";
 import { auth } from "@/lib/auth";
@@ -22,10 +24,8 @@ import { auth } from "@/lib/auth";
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-function toDTO(doc: DeviceDocument): DeviceDTO {
-  const { _id, userId, ...rest } = doc;
-  return { ...rest, _id: _id.toString(), userId: userId.toString() };
-}
+const VALID_CONDITIONS: DeviceCondition[] = ["New", "Used", "Refurbished"];
+const VALID_OWNERSHIP_TYPES: OwnershipType[] = ["Individual", "Company"];
 
 function errorResponse(message: string, status: number) {
   return NextResponse.json({ success: false, error: message }, { status });
@@ -50,7 +50,7 @@ export async function GET() {
       .sort({ createdAt: -1 })
       .toArray();
 
-    return NextResponse.json({ success: true, data: docs.map(toDTO) });
+    return NextResponse.json({ success: true, data: docs.map(toDeviceDTO) });
   } catch (err) {
     console.error("[GET /api/devices]", err);
     return errorResponse("Failed to fetch devices", 500);
@@ -75,8 +75,17 @@ export async function POST(req: NextRequest) {
     return errorResponse("Invalid JSON body", 400);
   }
 
-  const { brand, model, imei, serialNumber, deviceType, images } =
-    body as Record<string, unknown>;
+  const {
+    brand,
+    model,
+    imei,
+    serialNumber,
+    deviceType,
+    images,
+    condition,
+    ownershipType,
+    companyName,
+  } = body as Record<string, unknown>;
 
   // ── Field validation ──────────────────────────────────────
 
@@ -85,6 +94,33 @@ export async function POST(req: NextRequest) {
   }
   if (!model || typeof model !== "string" || !model.trim()) {
     return errorResponse("model is required", 400);
+  }
+
+  const resolvedCondition = (condition as string) ?? "Used";
+  if (!VALID_CONDITIONS.includes(resolvedCondition as DeviceCondition)) {
+    return errorResponse(
+      `condition must be one of: ${VALID_CONDITIONS.join(", ")}`,
+      400,
+    );
+  }
+
+  const resolvedOwnershipType = (ownershipType as string) ?? "Individual";
+  if (!VALID_OWNERSHIP_TYPES.includes(resolvedOwnershipType as OwnershipType)) {
+    return errorResponse(
+      `ownershipType must be one of: ${VALID_OWNERSHIP_TYPES.join(", ")}`,
+      400,
+    );
+  }
+
+  let resolvedCompanyName: string | undefined;
+  if (resolvedOwnershipType === "Company") {
+    if (!companyName || typeof companyName !== "string" || !companyName.trim()) {
+      return errorResponse(
+        "companyName is required when ownershipType is Company",
+        400,
+      );
+    }
+    resolvedCompanyName = companyName.trim();
   }
 
   const resolvedType: DeviceType =
@@ -179,6 +215,9 @@ export async function POST(req: NextRequest) {
     ...(normalizedSerial ? { serialNumber: normalizedSerial } : {}),
     status: "Clean",
     images: Array.isArray(images) ? (images as string[]) : [],
+    condition: resolvedCondition as DeviceCondition,
+    ownershipType: resolvedOwnershipType as OwnershipType,
+    ...(resolvedCompanyName ? { companyName: resolvedCompanyName } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -186,7 +225,7 @@ export async function POST(req: NextRequest) {
   try {
     await devicesCol.insertOne(newDevice);
     return NextResponse.json(
-      { success: true, data: toDTO(newDevice) },
+      { success: true, data: toDeviceDTO(newDevice) },
       { status: 201 },
     );
   } catch (err: unknown) {

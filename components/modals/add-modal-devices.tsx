@@ -10,16 +10,23 @@ interface Props {
 }
 
 type DeviceType = "mobile" | "computer";
+type DeviceCondition = "New" | "Used" | "Refurbished";
+type OwnershipType = "Individual" | "Company";
+
+const CONDITIONS: DeviceCondition[] = ["New", "Used", "Refurbished"];
 
 export default function AddDeviceModal({ onClose, onSuccess }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [deviceType, setDeviceType] = useState<DeviceType>("mobile");
+  const [condition, setCondition] = useState<DeviceCondition>("Used");
+  const [ownershipType, setOwnershipType] = useState<OwnershipType>("Individual");
 
   const [form, setForm] = useState<Record<string, string>>({
     brand: "",
     model: "",
     imei: "",
     serialNumber: "",
+    companyName: "",
   });
   const [imeiError, setImeiError] = useState<string | null>(null);
   const [serialError, setSerialError] = useState<string | null>(null);
@@ -84,6 +91,10 @@ export default function AddDeviceModal({ onClose, onSuccess }: Props) {
 
     if (!form.brand.trim()) { setApiError("Brand is required."); return; }
     if (!form.model.trim()) { setApiError("Model is required."); return; }
+    if (ownershipType === "Company" && !form.companyName.trim()) {
+      setApiError("Company / business name is required for company-owned devices.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -91,6 +102,9 @@ export default function AddDeviceModal({ onClose, onSuccess }: Props) {
         deviceType,
         brand: form.brand,
         model: form.model,
+        condition,
+        ownershipType,
+        ...(ownershipType === "Company" ? { companyName: form.companyName.trim() } : {}),
       };
       if (deviceType === "mobile") {
         payload.imei = form.imei.replace(/\D/g, "");
@@ -271,6 +285,74 @@ export default function AddDeviceModal({ onClose, onSuccess }: Props) {
                 />
               </div>
             ))}
+          </div>
+
+          {/* Device Condition */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest mb-2">
+              Device Condition
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {CONDITIONS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCondition(c)}
+                  className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all ${
+                    condition === c
+                      ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Ownership Type */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest mb-2">
+              Ownership Type
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setOwnershipType("Individual")}
+                className={`py-2.5 px-4 rounded-lg border text-sm font-bold transition-all ${
+                  ownershipType === "Individual"
+                    ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"
+                }`}
+              >
+                Individual
+              </button>
+              <button
+                type="button"
+                onClick={() => setOwnershipType("Company")}
+                className={`py-2.5 px-4 rounded-lg border text-sm font-bold transition-all ${
+                  ownershipType === "Company"
+                    ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"
+                }`}
+              >
+                Company
+              </button>
+            </div>
+            {ownershipType === "Company" && (
+              <div className="mt-3">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-widest mb-1.5">
+                  Company / Business Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.companyName}
+                  onChange={(e) => handleChange("companyName", e.target.value)}
+                  placeholder="e.g. Acme Logistics Ltd"
+                  className="w-full rounded-lg bg-white border border-slate-300 px-4 py-2.5 text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                />
+              </div>
+            )}
           </div>
 
           {apiError && (

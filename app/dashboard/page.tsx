@@ -265,6 +265,8 @@ export default function AppInterface(): React.ReactElement {
                           onDelete={handleDeleteAction}
                           onTransfer={(d) => setTransferDevice(d)}
                           onRefresh={fetchDevices}
+                          ownerName={session?.user?.name}
+                          ownerEmail={session?.user?.email}
                         />
                       ))
                     )}

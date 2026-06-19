@@ -17,6 +17,9 @@ import clientPromise from "./db";
 
 export type DeviceStatus = "Clean" | "Flagged";
 export type DeviceType = "mobile" | "computer";
+export type DeviceCondition = "New" | "Used" | "Refurbished";
+export type OwnershipType = "Individual" | "Company";
+export type FlagAction = "Flagged" | "Unflagged";
 
 /** Stored in MongoDB – uses ObjectId internally */
 export interface UserDocument {
@@ -42,6 +45,13 @@ export interface DeviceDocument {
   verifiedAt?: Date;
   flagReason?: string;
   images?: string[];
+  condition?: DeviceCondition;
+  ownershipType?: OwnershipType;
+  companyName?: string; // set only when ownershipType === "Company"
+  flaggedAt?: Date; // auto-set when status flips to "Flagged" — "Date flagged"
+  incidentLocation?: string; // place of incident
+  incidentAt?: Date; // date + time of incident
+  policeObNumber?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,6 +66,21 @@ export interface TransferDocument {
   price: number;
   transferredAt: Date;
   notes?: string;
+}
+
+/** Flag / unflag status-change record — one immutable row per transition */
+export interface FlagHistoryDocument {
+  _id: ObjectId;
+  deviceId: ObjectId; // FK → devices._id
+  imei?: string; // denormalised for fast history queries
+  serialNumber?: string; // denormalised for fast history queries
+  action: FlagAction;
+  reason: string;
+  incidentLocation?: string;
+  incidentAt?: Date;
+  policeObNumber?: string;
+  changedBy: ObjectId; // FK → users._id
+  changedAt: Date;
 }
 
 /** Password reset token */
@@ -85,6 +110,7 @@ export interface BlacklistDocument {
 export type DeviceDTO = Omit<DeviceDocument, "_id" | "userId"> & {
   _id: string;
   userId: string;
+  daysInTracking?: number; // computed, not persisted
 };
 
 export type PasswordResetDTO = Omit<PasswordResetDocument, "_id" | "userId"> & {
@@ -101,6 +127,30 @@ export type TransferDTO = Omit<
   fromUserId: string;
   toUserId: string;
 };
+
+export type FlagHistoryDTO = Omit<
+  FlagHistoryDocument,
+  "_id" | "deviceId" | "changedBy"
+> & {
+  _id: string;
+  deviceId: string;
+  changedBy: string;
+};
+
+/** Shared serialiser for DeviceDocument → DeviceDTO, used by all device routes */
+export function toDeviceDTO(doc: DeviceDocument): DeviceDTO {
+  const { _id, userId, ...rest } = doc;
+  const daysInTracking =
+    doc.status === "Flagged" && doc.flaggedAt
+      ? Math.floor((Date.now() - doc.flaggedAt.getTime()) / 86400000)
+      : undefined;
+  return {
+    ...rest,
+    _id: _id.toString(),
+    userId: userId.toString(),
+    ...(daysInTracking !== undefined ? { daysInTracking } : {}),
+  };
+}
 
 // ─────────────────────────────────────────────────────────────
 // 3. COLLECTION ACCESSORS  (typed, memoised)
@@ -126,6 +176,11 @@ export async function getDevicesCollection() {
 export async function getTransfersCollection() {
   const db = await getDb();
   return db.collection<TransferDocument>("transfers");
+}
+
+export async function getFlagHistoryCollection() {
+  const db = await getDb();
+  return db.collection<FlagHistoryDocument>("flag_history");
 }
 
 export async function getBlacklistCollection() {
@@ -172,6 +227,12 @@ export async function ensureIndexes() {
     { key: { fromUserId: 1 }, name: "transfers_from" },
     { key: { toUserId: 1 }, name: "transfers_to" },
     { key: { transferredAt: -1 }, name: "transfers_recent" },
+  ]);
+
+  // flag history
+  await db.collection("flag_history").createIndexes([
+    { key: { deviceId: 1, changedAt: -1 }, name: "flag_history_device_recent" },
+    { key: { imei: 1 }, name: "flag_history_imei" },
   ]);
 
   // blacklist
